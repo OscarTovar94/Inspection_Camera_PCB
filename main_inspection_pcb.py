@@ -8,7 +8,7 @@ import customtkinter as ctk
 import numpy as np
 from PIL import Image, ImageTk
 import tkinter as tk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox, simpledialog, ttk
 from skimage.metrics import structural_similarity
 
 
@@ -43,10 +43,19 @@ class CamaraVision:
         self.clave_admin = "1234"
         self.modo_admin = False
 
-        # Configuración general de cámara y carpeta de programas.
-        self.ruta_configuracion = "config.ini"
-        self.carpeta_programas = "programas"
+        # Rutas absolutas ancladas a la ubicación de este script.
+        # Así siempre se utiliza el config.ini que está junto al programa,
+        # independientemente de la carpeta desde la que se ejecute Python.
+        self.directorio_base = os.path.dirname(os.path.abspath(__file__))
+        self.ruta_configuracion = os.path.join(
+            self.directorio_base, "config.ini")
+        self.carpeta_programas = os.path.join(
+            self.directorio_base, "programas")
         os.makedirs(self.carpeta_programas, exist_ok=True)
+
+        # IDs de callbacks programados por nuestra aplicación.
+        self.after_zoom_id = None
+        self.cerrando = False
 
         self.programa_actual = None
         self.total_rois = 0
@@ -71,20 +80,44 @@ class CamaraVision:
 
         self.cargar_configuracion_general()
         if not self.seleccionar_programa_inicial():
-            self.ventana.destroy()
+            self.cerrando = True
+            try:
+                if self.ventana.winfo_exists():
+                    self.ventana.destroy()
+            except tk.TclError:
+                pass
             return
 
         self.cargar_programa(self.programa_actual)
+
+        print("[INICIO] Creando interfaz principal...")
         self.crear_interfaz()
+        print("[INICIO] Interfaz principal creada.")
+
         self.cargar_masters()
         self.actualizar_controles_roi()
-        self.iniciar_camara()
 
-        self.ventana.after(100, lambda: self.ventana.state("zoomed"))
+        print("[CAMARA] Inicializando cámara...")
+        self.iniciar_camara()
+        print("[CAMARA] Inicialización de cámara finalizada.")
+
+        self.after_zoom_id = self.ventana.after(
+            100, self.maximizar_ventana_seguro)
 
         self.inicializada = True
         self.ventana.protocol("WM_DELETE_WINDOW", self.salir)
         # self.ventana.after(100, lambda: self.ventana.state("zoomed"))
+
+    def maximizar_ventana_seguro(self):
+        """Maximiza la ventana sólo si Tk sigue activo."""
+        self.after_zoom_id = None
+        if self.cerrando:
+            return
+        try:
+            if self.ventana.winfo_exists():
+                self.ventana.state("zoomed")
+        except tk.TclError:
+            pass
 
     def crear_rois(self, cantidad):
         """Crea la cantidad solicitada de ROIs con parámetros predeterminados."""
@@ -199,42 +232,151 @@ class CamaraVision:
         return True
 
     def seleccionar_programa_inicial(self):
-        """Muestra una ventana modal para seleccionar o crear un programa."""
+        """
+        Selector inicial implementado con Tkinter nativo.
+
+        Se evita crear/destruir una ventana CTkToplevel antes del mainloop
+        principal, porque CustomTkinter programa callbacks internos de escala,
+        apariencia y DPI que pueden quedar pendientes al destruir esa ventana.
+        """
         seleccionado = {"ok": False}
-        dialogo = ctk.CTkToplevel(self.ventana)
+
+        try:
+            self.ventana.withdraw()
+        except tk.TclError:
+            return False
+
+        dialogo = tk.Toplevel(self.ventana)
         dialogo.title("Seleccionar programa")
-        dialogo.geometry("560x520")
+        dialogo.geometry("560x470")
         dialogo.resizable(False, False)
-        dialogo.configure(fg_color=self.color_fondo)
-        dialogo.transient(self.ventana)
-        dialogo.grab_set()
+        dialogo.configure(bg=self.color_fondo)
 
-        ctk.CTkLabel(dialogo, text="PROGRAMAS DE INSPECCIÓN",
-                     font=("Arial", 24, "bold")).pack(pady=(24, 6))
-        ctk.CTkLabel(dialogo, text="Selecciona un programa existente o crea uno nuevo.",
-                     text_color="#AEB4D0").pack(pady=(0, 18))
+        # IMPORTANTE:
+        # No se usa transient(self.ventana) porque la ventana principal está
+        # temporalmente oculta con withdraw(). En Windows, un Toplevel transient
+        # de una ventana oculta puede quedar creado pero no mostrarse.
+        dialogo.attributes("-topmost", True)
 
-        frame_sel = ctk.CTkFrame(dialogo, fg_color=self.color_panel)
-        frame_sel.pack(fill="x", padx=28, pady=8)
-        ctk.CTkLabel(frame_sel, text="Programa existente", font=(
-            "Arial", 14, "bold")).pack(anchor="w", padx=18, pady=(14, 6))
+        # Centrar aproximadamente en pantalla.
+        dialogo.update_idletasks()
+        ancho = 560
+        alto = 500
+        x = max(0, (dialogo.winfo_screenwidth() - ancho) // 2)
+        y = max(0, (dialogo.winfo_screenheight() - alto) // 2)
+        dialogo.geometry(f"{ancho}x{alto}+{x}+{y}")
+        dialogo.deiconify()
+        dialogo.lift()
+        dialogo.focus_force()
+
+        def quitar_topmost():
+            try:
+                if dialogo.winfo_exists():
+                    dialogo.attributes("-topmost", False)
+            except tk.TclError:
+                pass
+
+        dialogo.after(300, quitar_topmost)
+
+        print("[INICIO] Selector de programas visible.")
+
+        titulo = tk.Label(
+            dialogo,
+            text="PROGRAMAS DE INSPECCIÓN",
+            font=("Arial", 22, "bold"),
+            fg="white",
+            bg=self.color_fondo,
+        )
+        titulo.pack(pady=(22, 4))
+
+        subtitulo = tk.Label(
+            dialogo,
+            text="Selecciona un programa existente o crea uno nuevo.",
+            font=("Arial", 10),
+            fg="#AEB4D0",
+            bg=self.color_fondo,
+        )
+        subtitulo.pack(pady=(0, 16))
+
+        frame_sel = tk.Frame(
+            dialogo,
+            bg=self.color_panel,
+            highlightthickness=1,
+            highlightbackground=self.color_borde,
+        )
+        frame_sel.pack(fill="x", padx=28, pady=7)
+
+        tk.Label(
+            frame_sel,
+            text="Programa:",
+            font=("Arial", 12, "bold"),
+            fg="white",
+            bg=self.color_panel,
+        ).pack(anchor="w", padx=18, pady=(14, 6))
+
         programas = self.listar_programas()
-        self.menu_programa_inicial = ctk.CTkOptionMenu(
-            frame_sel, values=programas or ["-- Sin programas --"])
-        self.menu_programa_inicial.pack(fill="x", padx=18, pady=(0, 12))
+        variable_programa = tk.StringVar(
+            value=programas[0] if programas else "-- Sin programas --"
+        )
+
+        combo_programas = ttk.Combobox(
+            frame_sel,
+            textvariable=variable_programa,
+            values=programas or ["-- Sin programas --"],
+            state="readonly",
+        )
+        combo_programas.pack(fill="x", padx=18, pady=(0, 10))
+
+        def cerrar_selector():
+            print("[INICIO] Selector cerrado sin abrir programa.")
+            seleccionado["ok"] = False
+            try:
+                dialogo.grab_release()
+            except tk.TclError:
+                pass
+            try:
+                dialogo.destroy()
+            except tk.TclError:
+                pass
 
         def abrir_programa():
-            valor = self.menu_programa_inicial.get().strip()
-            if valor in self.listar_programas():
-                self.programa_actual = valor
-                seleccionado["ok"] = True
-                dialogo.destroy()
+            valor = variable_programa.get().strip()
+            if valor not in self.listar_programas():
+                return
 
-        ctk.CTkButton(frame_sel, text="ABRIR PROGRAMA", height=40,
-                      command=abrir_programa).pack(fill="x", padx=18, pady=(0, 6))
+            print(f"[INICIO] Abriendo programa: {valor}")
+            self.programa_actual = valor
+            seleccionado["ok"] = True
+
+            try:
+                dialogo.grab_release()
+            except tk.TclError:
+                pass
+            dialogo.destroy()
+
+        tk.Button(
+            frame_sel,
+            text="ABRIR PROGRAMA",
+            height=2,
+            bg="#1F6AA5",
+            fg="white",
+            activebackground="#144870",
+            activeforeground="white",
+            relief="flat",
+            command=abrir_programa,
+        ).pack(fill="x", padx=18, pady=(0, 6))
+
+        def actualizar_lista_programas():
+            nuevos = self.listar_programas()
+            combo_programas.configure(
+                values=nuevos or ["-- Sin programas --"]
+            )
+            variable_programa.set(
+                nuevos[0] if nuevos else "-- Sin programas --"
+            )
 
         def eliminar_programa():
-            valor = self.menu_programa_inicial.get().strip()
+            valor = variable_programa.get().strip()
             if valor not in self.listar_programas():
                 return
 
@@ -254,63 +396,138 @@ class CamaraVision:
                 shutil.rmtree(os.path.join(self.carpeta_programas, valor))
             except OSError as error:
                 messagebox.showerror(
-                    "Error", f"No fue posible eliminar el programa.\n{error}", parent=dialogo
+                    "Error",
+                    f"No fue posible eliminar el programa.\n{error}",
+                    parent=dialogo,
                 )
                 return
 
-            nuevos = self.listar_programas()
-            self.menu_programa_inicial.configure(
-                values=nuevos or ["-- Sin programas --"])
-            self.menu_programa_inicial.set(
-                nuevos[0] if nuevos else "-- Sin programas --")
+            actualizar_lista_programas()
 
-        ctk.CTkButton(
+        tk.Button(
             frame_sel,
             text="ELIMINAR PROGRAMA",
-            height=34,
-            fg_color="#8B2E2E",
-            hover_color="#6E2424",
+            height=1,
+            bg="#8B2E2E",
+            fg="white",
+            activebackground="#6E2424",
+            activeforeground="white",
+            relief="flat",
             command=eliminar_programa,
         ).pack(fill="x", padx=18, pady=(0, 14))
 
-        frame_nuevo = ctk.CTkFrame(dialogo, fg_color=self.color_panel)
-        frame_nuevo.pack(fill="x", padx=28, pady=8)
-        ctk.CTkLabel(frame_nuevo, text="Crear nuevo programa", font=("Arial", 14, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=18, pady=(14, 8))
-        self.entry_nombre_programa = ctk.CTkEntry(
-            frame_nuevo, placeholder_text="Ej. 428272")
-        self.entry_nombre_programa.grid(
-            row=1, column=0, padx=(18, 6), pady=6, sticky="ew")
-        self.entry_cantidad_rois = ctk.CTkEntry(
-            frame_nuevo, width=120, placeholder_text="ROIs")
-        self.entry_cantidad_rois.grid(row=1, column=1, padx=(6, 18), pady=6)
+        frame_nuevo = tk.Frame(
+            dialogo,
+            bg=self.color_panel,
+            highlightthickness=1,
+            highlightbackground=self.color_borde,
+        )
+        frame_nuevo.pack(fill="x", padx=28, pady=7)
+
+        tk.Label(
+            frame_nuevo,
+            text="Crear nuevo programa",
+            font=("Arial", 12, "bold"),
+            fg="white",
+            bg=self.color_panel,
+        ).grid(
+            row=0, column=0, columnspan=2,
+            sticky="w", padx=18, pady=(14, 8)
+        )
+
+        entry_nombre_programa = tk.Entry(
+            frame_nuevo,
+            font=("Arial", 11),
+        )
+        entry_nombre_programa.grid(
+            row=1, column=0,
+            padx=(18, 6), pady=6, sticky="ew"
+        )
+
+        entry_cantidad_rois = tk.Entry(
+            frame_nuevo,
+            width=10,
+            font=("Arial", 11),
+        )
+        entry_cantidad_rois.grid(
+            row=1, column=1,
+            padx=(6, 18), pady=6
+        )
+
         frame_nuevo.grid_columnconfigure(0, weight=1)
-        label_estado = ctk.CTkLabel(frame_nuevo, text="", text_color="#FFB86C")
-        label_estado.grid(row=2, column=0, columnspan=2, padx=18, pady=2)
+
+        label_estado = tk.Label(
+            frame_nuevo,
+            text="",
+            font=("Arial", 9),
+            fg="#FFB86C",
+            bg=self.color_panel,
+        )
+        label_estado.grid(
+            row=2, column=0, columnspan=2,
+            padx=18, pady=2
+        )
 
         def crear_y_abrir():
-            nombre = self.entry_nombre_programa.get()
-            cantidad = self.entry_cantidad_rois.get()
+            nombre = entry_nombre_programa.get()
+            cantidad = entry_cantidad_rois.get()
 
             if not self.solicitar_clave_admin(dialogo, "crear un programa nuevo"):
                 return
 
             ok, mensaje = self.crear_programa(nombre, cantidad)
             label_estado.configure(
-                text=mensaje, text_color="#6FE3A1" if ok else "#FF6B6B")
+                text=mensaje,
+                fg="#6FE3A1" if ok else "#FF6B6B",
+            )
+
             if ok:
                 self.programa_actual = nombre.strip()
                 seleccionado["ok"] = True
-                dialogo.after(250, dialogo.destroy)
+                print(
+                    f"[INICIO] Programa creado y abierto: {self.programa_actual}")
+                try:
+                    dialogo.grab_release()
+                except tk.TclError:
+                    pass
+                dialogo.destroy()
 
-        ctk.CTkButton(frame_nuevo, text="CREAR Y ABRIR", height=40, fg_color="#218C4A", hover_color="#176A38",
-                      command=crear_y_abrir).grid(row=3, column=0, columnspan=2, padx=18, pady=(6, 14), sticky="ew")
+        tk.Button(
+            frame_nuevo,
+            text="CREAR Y ABRIR",
+            height=2,
+            bg="#218C4A",
+            fg="white",
+            activebackground="#176A38",
+            activeforeground="white",
+            relief="flat",
+            command=crear_y_abrir,
+        ).grid(
+            row=3, column=0, columnspan=2,
+            padx=18, pady=(6, 14), sticky="ew"
+        )
 
-        dialogo.protocol("WM_DELETE_WINDOW", dialogo.destroy)
-        self.ventana.wait_window(dialogo)
+        dialogo.protocol("WM_DELETE_WINDOW", cerrar_selector)
+
+        try:
+            print("[INICIO] Esperando selección de programa...")
+            dialogo.grab_set()
+            self.ventana.wait_window(dialogo)
+        except tk.TclError as error:
+            print(f"[INICIO] Error en selector: {error}")
+            seleccionado["ok"] = False
+
+        if seleccionado["ok"]:
+            try:
+                self.ventana.deiconify()
+                self.ventana.update_idletasks()
+            except tk.TclError:
+                return False
+
         return seleccionado["ok"]
 
     def cargar_programa(self, nombre_programa):
+        """Carga la receta del programa seleccionado desde su programa.ini."""
         self.programa_actual = nombre_programa
         carpeta = os.path.join(self.carpeta_programas, nombre_programa)
         self.ruta_programa = os.path.join(carpeta, "programa.ini")
@@ -319,10 +536,19 @@ class CamaraVision:
         os.makedirs(self.carpeta_master, exist_ok=True)
         os.makedirs(self.carpeta_resultados, exist_ok=True)
 
+        print(f"[PROGRAMA] Archivo utilizado: {self.ruta_programa}")
+
         config = configparser.ConfigParser()
-        config.read(self.ruta_programa, encoding="utf-8")
-        self.total_rois = config.getint(
-            "PROGRAMA", "cantidad_rois", fallback=1)
+        try:
+            config.read(self.ruta_programa, encoding="utf-8")
+        except (configparser.Error, OSError) as error:
+            print(f"[PROGRAMA] Error al leer programa.ini: {error}")
+
+        try:
+            self.total_rois = config.getint(
+                "PROGRAMA", "cantidad_rois", fallback=1)
+        except ValueError:
+            self.total_rois = 1
         self.total_rois = max(1, min(50, self.total_rois))
         self.rois = self.crear_rois(self.total_rois)
         self.roi_seleccionado = 0
@@ -331,22 +557,44 @@ class CamaraVision:
             seccion = f"ROI_{indice}"
             if not config.has_section(seccion):
                 continue
-            roi["nombre"] = config.get(
-                seccion, "nombre", fallback=roi["nombre"])
-            roi["x1"] = config.getint(seccion, "x1", fallback=roi["x1"])
-            roi["y1"] = config.getint(seccion, "y1", fallback=roi["y1"])
-            roi["x2"] = config.getint(seccion, "x2", fallback=roi["x2"])
-            roi["y2"] = config.getint(seccion, "y2", fallback=roi["y2"])
-            roi["similitud_minima"] = config.getfloat(
-                seccion, "similitud_minima", fallback=roi["similitud_minima"])
-            roi["sensibilidad"] = config.getint(
-                seccion, "sensibilidad", fallback=roi["sensibilidad"])
-            roi["area_minima"] = config.getint(
-                seccion, "area_minima", fallback=roi["area_minima"])
-            roi["area_defecto_maxima"] = config.getfloat(
-                seccion, "area_defecto_maxima", fallback=roi["area_defecto_maxima"])
-            roi["porcentaje_diferente_maximo"] = config.getfloat(
-                seccion, "porcentaje_diferente_maximo", fallback=roi["porcentaje_diferente_maximo"])
+            try:
+                roi["nombre"] = config.get(
+                    seccion, "nombre", fallback=roi["nombre"])
+                roi["x1"] = config.getint(seccion, "x1", fallback=roi["x1"])
+                roi["y1"] = config.getint(seccion, "y1", fallback=roi["y1"])
+                roi["x2"] = config.getint(seccion, "x2", fallback=roi["x2"])
+                roi["y2"] = config.getint(seccion, "y2", fallback=roi["y2"])
+                roi["similitud_minima"] = config.getfloat(
+                    seccion, "similitud_minima", fallback=roi["similitud_minima"]
+                )
+                roi["sensibilidad"] = config.getint(
+                    seccion, "sensibilidad", fallback=roi["sensibilidad"]
+                )
+                roi["area_minima"] = config.getint(
+                    seccion, "area_minima", fallback=roi["area_minima"]
+                )
+                roi["area_defecto_maxima"] = config.getfloat(
+                    seccion, "area_defecto_maxima", fallback=roi["area_defecto_maxima"]
+                )
+                roi["porcentaje_diferente_maximo"] = config.getfloat(
+                    seccion,
+                    "porcentaje_diferente_maximo",
+                    fallback=roi["porcentaje_diferente_maximo"],
+                )
+            except ValueError as error:
+                print(f"[PROGRAMA] Valor no válido en {seccion}: {error}")
+
+        print(
+            f"[PROGRAMA] '{self.programa_actual}' cargado con {self.total_rois} ROI(s).")
+        for indice, roi in enumerate(self.rois, start=1):
+            print(
+                f"[PROGRAMA] ROI_{indice}: "
+                f"similitud={roi['similitud_minima']}, "
+                f"sensibilidad={roi['sensibilidad']}, "
+                f"area_minima={roi['area_minima']}, "
+                f"area_defecto_maxima={roi['area_defecto_maxima']}, "
+                f"porcentaje_diferente_maximo={roi['porcentaje_diferente_maximo']}"
+            )
 
     def crear_interfaz(self):
         self.ventana.grid_columnconfigure(0, weight=1)
@@ -655,14 +903,23 @@ class CamaraVision:
             )
 
     def cargar_configuracion_general(self):
+        """Carga config.ini desde la misma carpeta del script."""
         config = configparser.ConfigParser()
+
+        print(f"[CONFIG] Archivo utilizado: {self.ruta_configuracion}")
 
         if os.path.exists(self.ruta_configuracion):
             try:
-                config.read(self.ruta_configuracion, encoding="utf-8")
-            except configparser.Error as error:
-                print(f"No fue posible cargar config.ini: {error}")
+                archivos_leidos = config.read(
+                    self.ruta_configuracion, encoding="utf-8")
+                if not archivos_leidos:
+                    print("[CONFIG] Advertencia: config.ini no pudo ser leído.")
+            except (configparser.Error, OSError) as error:
+                print(f"[CONFIG] No fue posible cargar config.ini: {error}")
                 config = configparser.ConfigParser()
+        else:
+            print(
+                "[CONFIG] config.ini no existe. Se creará con valores predeterminados.")
 
         if config.has_section("CAMARA"):
             try:
@@ -676,28 +933,52 @@ class CamaraVision:
                     "CAMARA", "alto", fallback=self.alto_camara
                 )
             except ValueError as error:
-                print(f"Configuración de cámara no válida: {error}")
+                print(f"[CONFIG] Configuración de cámara no válida: {error}")
 
         if config.has_section("ADMIN"):
-            self.clave_admin = config.get(
-                "ADMIN", "clave", fallback=self.clave_admin
-            ).strip() or "1234"
+            clave = config.get(
+                "ADMIN", "clave", fallback=self.clave_admin).strip()
+            if clave:
+                self.clave_admin = clave
 
-        # Garantiza que config.ini siempre tenga CAMARA y ADMIN sin borrar
-        # los valores que ya existían.
+        print(
+            "[CONFIG] Cámara cargada -> "
+            f"indice={self.indice_camara}, ancho={self.ancho_camara}, alto={self.alto_camara}"
+        )
+        print("[CONFIG] Sección ADMIN cargada correctamente.")
+
+        # Sólo completa secciones/valores faltantes. No reemplaza valores válidos
+        # que el usuario haya modificado manualmente.
+        modificado = False
+
         if not config.has_section("CAMARA"):
-            config["CAMARA"] = {}
-        config["CAMARA"]["indice"] = str(self.indice_camara)
-        config["CAMARA"]["ancho"] = str(self.ancho_camara)
-        config["CAMARA"]["alto"] = str(self.alto_camara)
+            config.add_section("CAMARA")
+            modificado = True
+
+        valores_camara = {
+            "indice": str(self.indice_camara),
+            "ancho": str(self.ancho_camara),
+            "alto": str(self.alto_camara),
+        }
+        for clave, valor in valores_camara.items():
+            if not config.has_option("CAMARA", clave):
+                config.set("CAMARA", clave, valor)
+                modificado = True
 
         if not config.has_section("ADMIN"):
-            config["ADMIN"] = {}
-        if not config["ADMIN"].get("clave", "").strip():
-            config["ADMIN"]["clave"] = self.clave_admin
+            config.add_section("ADMIN")
+            modificado = True
+        if not config.has_option("ADMIN", "clave") or not config.get("ADMIN", "clave").strip():
+            config.set("ADMIN", "clave", self.clave_admin)
+            modificado = True
 
-        with open(self.ruta_configuracion, "w", encoding="utf-8") as archivo:
-            config.write(archivo)
+        if modificado:
+            try:
+                with open(self.ruta_configuracion, "w", encoding="utf-8") as archivo:
+                    config.write(archivo)
+            except OSError as error:
+                print(
+                    f"[CONFIG] No fue posible actualizar config.ini: {error}")
 
     def guardar_configuracion_general(self):
         config = configparser.ConfigParser()
@@ -1432,24 +1713,57 @@ class CamaraVision:
         )
 
     def salir(self):
+        """Cierra cámara, callbacks y Tk en un orden seguro."""
+        if self.cerrando:
+            return
+
+        print("[CIERRE] Cierre solicitado por la aplicación/usuario.")
+        self.cerrando = True
         self.comparacion_activa = False
-        if self.actualizacion_programada is not None:
-            try:
-                self.ventana.after_cancel(self.actualizacion_programada)
-            except Exception:
-                pass
+        self.mostrando_fotografia = False
+
+        for after_id_name in ("actualizacion_programada", "after_zoom_id"):
+            after_id = getattr(self, after_id_name, None)
+            if after_id is not None:
+                try:
+                    self.ventana.after_cancel(after_id)
+                except (tk.TclError, Exception):
+                    pass
+                setattr(self, after_id_name, None)
 
         if self.camara is not None:
-            self.camara.release()
+            try:
+                self.camara.release()
+            except Exception:
+                pass
+            self.camara = None
 
-        cv2.destroyAllWindows()
-        self.ventana.destroy()
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
+
+        try:
+            if self.ventana.winfo_exists():
+                self.ventana.quit()
+                self.ventana.destroy()
+        except tk.TclError:
+            pass
 
     def ejecutar(self):
-        if self.inicializada:
+        """Inicia mainloop únicamente cuando la inicialización terminó bien."""
+        if not self.inicializada or self.cerrando:
+            return
+
+        try:
             self.ventana.mainloop()
+        except tk.TclError as error:
+            # Evita el traceback secundario si Tk ya fue destruido durante el cierre.
+            if "application has been destroyed" not in str(error):
+                raise
 
 
 if __name__ == "__main__":
     aplicacion = CamaraVision()
-    aplicacion.ejecutar()
+    if aplicacion.inicializada:
+        aplicacion.ejecutar()
