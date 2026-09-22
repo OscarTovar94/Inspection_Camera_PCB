@@ -1,15 +1,19 @@
+"""
+Software de inspección visual multiprograma con cantidad dinámica de ROIs.
+"""
 import configparser
 import os
 import shutil
 from datetime import datetime
+from tkinter import messagebox, simpledialog, ttk
+import tkinter as tk
 
 import cv2
 import customtkinter as ctk
 import numpy as np
+
 from PIL import Image, ImageTk
-import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
-from skimage.metrics import structural_similarity
+from skimage.metrics import structural_similarity  # pylint: disable=no-name-in-module
 
 
 class CamaraVision:
