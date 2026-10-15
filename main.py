@@ -19,7 +19,7 @@ from PIL import Image, ImageTk
 from skimage.metrics import structural_similarity  # pylint: disable=no-name-in-module
 
 try:
-    import zxingcpp
+    import zxingcpp  # pylint: disable=no-name-in-module
 except ImportError:
     zxingcpp = None
 
@@ -871,27 +871,33 @@ class CamaraVision:
         # Parámetros avanzados por ROI. Se editan sólo en modo administrador.
         ctk.CTkLabel(panel, text="Área mínima de defecto (px²)", font=("Arial", 12, "bold"),
                      text_color="#AEB4D0").grid(row=19, column=0, padx=18, pady=(8, 2), sticky="w")
-        self.label_area_minima = ctk.CTkLabel(panel, text="20 px²", text_color="white")
+        self.label_area_minima = ctk.CTkLabel(
+            panel, text="20 px²", text_color="white")
         self.label_area_minima.grid(row=20, column=0, padx=18, pady=1)
         self.slider_area_minima = ctk.CTkSlider(panel, from_=1, to=500, number_of_steps=499,
                                                 command=self.cambiar_area_minima_roi)
-        self.slider_area_minima.grid(row=21, column=0, padx=18, pady=(1, 6), sticky="ew")
+        self.slider_area_minima.grid(
+            row=21, column=0, padx=18, pady=(1, 6), sticky="ew")
 
         ctk.CTkLabel(panel, text="Área máxima permitida (px²)", font=("Arial", 12, "bold"),
                      text_color="#AEB4D0").grid(row=22, column=0, padx=18, pady=(8, 2), sticky="w")
-        self.label_area_maxima = ctk.CTkLabel(panel, text="50 px²", text_color="white")
+        self.label_area_maxima = ctk.CTkLabel(
+            panel, text="50 px²", text_color="white")
         self.label_area_maxima.grid(row=23, column=0, padx=18, pady=1)
         self.slider_area_maxima = ctk.CTkSlider(panel, from_=1, to=5000, number_of_steps=999,
                                                 command=self.cambiar_area_maxima_roi)
-        self.slider_area_maxima.grid(row=24, column=0, padx=18, pady=(1, 6), sticky="ew")
+        self.slider_area_maxima.grid(
+            row=24, column=0, padx=18, pady=(1, 6), sticky="ew")
 
         ctk.CTkLabel(panel, text="Diferencia máxima permitida (%)", font=("Arial", 12, "bold"),
                      text_color="#AEB4D0").grid(row=25, column=0, padx=18, pady=(8, 2), sticky="w")
-        self.label_porcentaje_diferente = ctk.CTkLabel(panel, text="0.200 %", text_color="white")
+        self.label_porcentaje_diferente = ctk.CTkLabel(
+            panel, text="0.200 %", text_color="white")
         self.label_porcentaje_diferente.grid(row=26, column=0, padx=18, pady=1)
         self.slider_porcentaje_diferente = ctk.CTkSlider(panel, from_=0.01, to=10.0, number_of_steps=999,
                                                          command=self.cambiar_porcentaje_diferente_roi)
-        self.slider_porcentaje_diferente.grid(row=27, column=0, padx=18, pady=(1, 8), sticky="ew")
+        self.slider_porcentaje_diferente.grid(
+            row=27, column=0, padx=18, pady=(1, 8), sticky="ew")
 
         self.boton_comparar = ctk.CTkButton(
             panel,
@@ -1167,10 +1173,13 @@ class CamaraVision:
         self.slider_sensibilidad.set(roi["sensibilidad"])
         self.slider_area_minima.set(roi["area_minima"])
         self.slider_area_maxima.set(roi["area_defecto_maxima"])
-        self.slider_porcentaje_diferente.set(roi["porcentaje_diferente_maximo"])
+        self.slider_porcentaje_diferente.set(
+            roi["porcentaje_diferente_maximo"])
         self.label_area_minima.configure(text=f'{int(roi["area_minima"])} px²')
-        self.label_area_maxima.configure(text=f'{roi["area_defecto_maxima"]:.0f} px²')
-        self.label_porcentaje_diferente.configure(text=f'{roi["porcentaje_diferente_maximo"]:.3f} %')
+        self.label_area_maxima.configure(
+            text=f'{roi["area_defecto_maxima"]:.0f} px²')
+        self.label_porcentaje_diferente.configure(
+            text=f'{roi["porcentaje_diferente_maximo"]:.3f} %')
         self.label_similitud_config.configure(
             text=f'{roi["similitud_minima"]:.1f} %')
         self.label_sensibilidad.configure(text=f'{int(roi["sensibilidad"])} %')
@@ -1224,7 +1233,8 @@ class CamaraVision:
             return
         roi = self.rois[self.roi_seleccionado]
         roi["area_defecto_maxima"] = max(1.0, float(valor))
-        self.label_area_maxima.configure(text=f'{roi["area_defecto_maxima"]:.0f} px²')
+        self.label_area_maxima.configure(
+            text=f'{roi["area_defecto_maxima"]:.0f} px²')
         self.guardar_configuracion()
 
     def cambiar_porcentaje_diferente_roi(self, valor):
@@ -1232,7 +1242,8 @@ class CamaraVision:
             return
         roi = self.rois[self.roi_seleccionado]
         roi["porcentaje_diferente_maximo"] = max(0.01, float(valor))
-        self.label_porcentaje_diferente.configure(text=f'{roi["porcentaje_diferente_maximo"]:.3f} %')
+        self.label_porcentaje_diferente.configure(
+            text=f'{roi["porcentaje_diferente_maximo"]:.3f} %')
         self.guardar_configuracion()
 
     def activar_configuracion_roi(self):
@@ -1442,7 +1453,8 @@ class CamaraVision:
             return None
         try:
             gris = cv2.cvtColor(imagen_roi, cv2.COLOR_BGR2GRAY)
-            resultados = zxingcpp.read_barcodes(gris)
+            resultados = zxingcpp.read_barcodes(
+                gris)
             for resultado in resultados:
                 if resultado.format == zxingcpp.BarcodeFormat.DataMatrix:
                     return resultado.text.strip()
