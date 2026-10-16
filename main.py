@@ -122,11 +122,12 @@ class CamaraVision:
 
     def maximizar_ventana_seguro(self):
         """Maximiza la ventana sólo si Tk sigue activo."""
-        self.after_zoom_id = None
-        if self.cerrando:
-            return
         try:
-            if self.ventana.winfo_exists():
+            if platform.system() == "Windows":
+                self.ventana.state("zoomed")
+            elif platform.system() == "Linux":
+                self.ventana.wm_attributes("-zoomed", True)
+            else:
                 self.ventana.state("zoomed")
         except tk.TclError:
             pass
