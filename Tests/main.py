@@ -19,7 +19,7 @@ from PIL import Image, ImageTk
 from skimage.metrics import structural_similarity  # pylint: disable=no-name-in-module
 
 try:
-    import zxingcpp
+    import zxingcpp  # pylint: disable=no-name-in-module
 except ImportError:
     zxingcpp = None
 
@@ -122,11 +122,12 @@ class CamaraVision:
 
     def maximizar_ventana_seguro(self):
         """Maximiza la ventana sólo si Tk sigue activo."""
-        self.after_zoom_id = None
-        if self.cerrando:
-            return
         try:
-            if self.ventana.winfo_exists():
+            if platform.system() == "Windows":
+                self.ventana.state("zoomed")
+            elif platform.system() == "Linux":
+                self.ventana.wm_attributes("-zoomed", True)
+            else:
                 self.ventana.state("zoomed")
         except tk.TclError:
             pass
@@ -676,19 +677,22 @@ class CamaraVision:
         self.id_imagen_canvas = None
         self.imagen_tk_actual = None
 
-        panel = ctk.CTkScrollableFrame(
+        # Panel derecho dividido en tres zonas:
+        # 1) estado fijo arriba, 2) controles desplazables, 3) INICIAR PRUEBA fijo abajo.
+        panel_derecho = ctk.CTkFrame(
             contenido,
-            width=330,
+            width=350,
             fg_color=self.color_panel,
             border_width=1,
             border_color=self.color_borde,
             corner_radius=12,
         )
-        panel.grid(row=0, column=1, sticky="ns")
-        panel.grid_columnconfigure(0, weight=1)
+        panel_derecho.grid(row=0, column=1, sticky="ns")
+        panel_derecho.grid_columnconfigure(0, weight=1)
+        panel_derecho.grid_rowconfigure(1, weight=1)
 
         self.label_resultado_general = ctk.CTkLabel(
-            panel,
+            panel_derecho,
             text="En espera",
             height=60,
             corner_radius=10,
@@ -697,7 +701,16 @@ class CamaraVision:
             text_color="white",
         )
         self.label_resultado_general.grid(
-            row=1, column=0, padx=18, pady=0, sticky="ew")
+            row=0, column=0, padx=16, pady=(12, 6), sticky="ew")
+
+        panel = ctk.CTkScrollableFrame(
+            panel_derecho,
+            width=318,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        panel.grid(row=1, column=0, padx=(6, 4), pady=0, sticky="nsew")
+        panel.grid_columnconfigure(0, weight=1)
 
         self.labels_resultados = []
         frame_resultados = ctk.CTkFrame(
@@ -721,26 +734,26 @@ class CamaraVision:
             text="ROI a configurar",
             font=("Arial", 12, "bold"),
             text_color="#AEB4D0",
-        ).grid(row=3, column=0, padx=18, pady=5, sticky="w")
+        ).grid(row=3, column=0, padx=18, pady=(8, 2), sticky="w")
 
         self.menu_roi = ctk.CTkOptionMenu(
             panel,
             values=[f"ROI {i}" for i in range(1, self.total_rois + 1)],
             command=self.cambiar_roi_seleccionado,
         )
-        self.menu_roi.grid(row=4, column=0, padx=18, pady=5, sticky="ew")
+        self.menu_roi.grid(row=4, column=0, padx=18, pady=(0, 8), sticky="ew")
 
         ctk.CTkLabel(
             panel, text="Tipo de ROI", font=("Arial", 12, "bold"),
             text_color="#AEB4D0"
-        ).grid(row=4, column=0, padx=18, pady=(58, 0), sticky="w")
+        ).grid(row=5, column=0, padx=18, pady=(4, 2), sticky="w")
 
         self.menu_tipo_roi = ctk.CTkOptionMenu(
             panel, values=["INSPECCION", "DATAMATRIX"],
             command=self.cambiar_tipo_roi
         )
-        self.menu_tipo_roi.grid(row=4, column=0, padx=18,
-                                pady=(88, 0), sticky="ew")
+        self.menu_tipo_roi.grid(row=6, column=0, padx=18,
+                                pady=(0, 8), sticky="ew")
 
         self.label_coordenadas = ctk.CTkLabel(
             panel,
@@ -749,7 +762,7 @@ class CamaraVision:
             text_color="#AEB4D0",
         )
         self.label_coordenadas.grid(
-            row=5, column=0, padx=18, pady=4, sticky="ew")
+            row=7, column=0, padx=18, pady=4, sticky="ew")
 
         self.boton_admin = ctk.CTkButton(
             panel,
@@ -760,7 +773,7 @@ class CamaraVision:
             hover_color="#5F4700",
             command=self.alternar_modo_admin,
         )
-        self.boton_admin.grid(row=6, column=0, padx=18,
+        self.boton_admin.grid(row=8, column=0, padx=18,
                               pady=(8, 6), sticky="ew")
 
         self.boton_configurar = ctk.CTkButton(
@@ -771,7 +784,7 @@ class CamaraVision:
             command=self.activar_configuracion_roi,
         )
         self.boton_configurar.grid(
-            row=7, column=0, padx=18, pady=6, sticky="ew")
+            row=9, column=0, padx=18, pady=6, sticky="ew")
 
         self.boton_master = ctk.CTkButton(
             panel,
@@ -782,7 +795,7 @@ class CamaraVision:
             hover_color="#26465D",
             command=self.capturar_master_roi,
         )
-        self.boton_master.grid(row=8, column=0, padx=18, pady=6, sticky="ew")
+        self.boton_master.grid(row=10, column=0, padx=18, pady=6, sticky="ew")
 
         self.boton_todos_masters = ctk.CTkButton(
             panel,
@@ -794,14 +807,14 @@ class CamaraVision:
             command=self.capturar_todos_los_masters,
         )
         self.boton_todos_masters.grid(
-            row=9, column=0, padx=18, pady=6, sticky="ew")
+            row=11, column=0, padx=18, pady=6, sticky="ew")
 
         ctk.CTkLabel(
             panel,
             text="Similitud mínima",
             font=("Arial", 14, "bold"),
             text_color="#AEB4D0",
-        ).grid(row=10, column=0, padx=18, pady=(16, 3), sticky="w")
+        ).grid(row=12, column=0, padx=18, pady=(16, 3), sticky="w")
 
         self.label_similitud_config = ctk.CTkLabel(
             panel,
@@ -809,7 +822,7 @@ class CamaraVision:
             font=("Arial", 16, "bold"),
             text_color="white",
         )
-        self.label_similitud_config.grid(row=11, column=0, padx=18, pady=2)
+        self.label_similitud_config.grid(row=13, column=0, padx=18, pady=2)
 
         self.slider_similitud = ctk.CTkSlider(
             panel,
@@ -819,14 +832,14 @@ class CamaraVision:
             command=self.cambiar_similitud_roi,
         )
         self.slider_similitud.grid(
-            row=12, column=0, padx=18, pady=(2, 8), sticky="ew")
+            row=14, column=0, padx=18, pady=(2, 8), sticky="ew")
 
         ctk.CTkLabel(
             panel,
             text="Sensibilidad de diferencias",
             font=("Arial", 14, "bold"),
             text_color="#AEB4D0",
-        ).grid(row=13, column=0, padx=18, pady=(10, 3), sticky="w")
+        ).grid(row=15, column=0, padx=18, pady=(10, 3), sticky="w")
 
         self.label_sensibilidad = ctk.CTkLabel(
             panel,
@@ -834,7 +847,7 @@ class CamaraVision:
             font=("Arial", 16, "bold"),
             text_color="white",
         )
-        self.label_sensibilidad.grid(row=14, column=0, padx=18, pady=2)
+        self.label_sensibilidad.grid(row=16, column=0, padx=18, pady=2)
 
         self.slider_sensibilidad = ctk.CTkSlider(
             panel,
@@ -844,7 +857,7 @@ class CamaraVision:
             command=self.cambiar_sensibilidad_roi,
         )
         self.slider_sensibilidad.grid(
-            row=15, column=0, padx=18, pady=(2, 4), sticky="ew")
+            row=17, column=0, padx=18, pady=(2, 4), sticky="ew")
 
         self.label_ayuda_sensibilidad = ctk.CTkLabel(
             panel,
@@ -854,7 +867,38 @@ class CamaraVision:
             wraplength=280,
         )
         self.label_ayuda_sensibilidad.grid(
-            row=16, column=0, padx=18, pady=(0, 10))
+            row=18, column=0, padx=18, pady=(0, 10))
+
+        # Parámetros avanzados por ROI. Se editan sólo en modo administrador.
+        ctk.CTkLabel(panel, text="Área mínima de defecto (px²)", font=("Arial", 12, "bold"),
+                     text_color="#AEB4D0").grid(row=19, column=0, padx=18, pady=(8, 2), sticky="w")
+        self.label_area_minima = ctk.CTkLabel(
+            panel, text="20 px²", text_color="white")
+        self.label_area_minima.grid(row=20, column=0, padx=18, pady=1)
+        self.slider_area_minima = ctk.CTkSlider(panel, from_=1, to=500, number_of_steps=499,
+                                                command=self.cambiar_area_minima_roi)
+        self.slider_area_minima.grid(
+            row=21, column=0, padx=18, pady=(1, 6), sticky="ew")
+
+        ctk.CTkLabel(panel, text="Área máxima permitida (px²)", font=("Arial", 12, "bold"),
+                     text_color="#AEB4D0").grid(row=22, column=0, padx=18, pady=(8, 2), sticky="w")
+        self.label_area_maxima = ctk.CTkLabel(
+            panel, text="50 px²", text_color="white")
+        self.label_area_maxima.grid(row=23, column=0, padx=18, pady=1)
+        self.slider_area_maxima = ctk.CTkSlider(panel, from_=1, to=5000, number_of_steps=999,
+                                                command=self.cambiar_area_maxima_roi)
+        self.slider_area_maxima.grid(
+            row=24, column=0, padx=18, pady=(1, 6), sticky="ew")
+
+        ctk.CTkLabel(panel, text="Diferencia máxima permitida (%)", font=("Arial", 12, "bold"),
+                     text_color="#AEB4D0").grid(row=25, column=0, padx=18, pady=(8, 2), sticky="w")
+        self.label_porcentaje_diferente = ctk.CTkLabel(
+            panel, text="0.200 %", text_color="white")
+        self.label_porcentaje_diferente.grid(row=26, column=0, padx=18, pady=1)
+        self.slider_porcentaje_diferente = ctk.CTkSlider(panel, from_=0.01, to=10.0, number_of_steps=999,
+                                                         command=self.cambiar_porcentaje_diferente_roi)
+        self.slider_porcentaje_diferente.grid(
+            row=27, column=0, padx=18, pady=(1, 8), sticky="ew")
 
         self.boton_comparar = ctk.CTkButton(
             panel,
@@ -866,18 +910,19 @@ class CamaraVision:
             command=self.alternar_comparacion,
         )
         self.boton_comparar.grid(
-            row=17, column=0, padx=18, pady=(12, 6), sticky="ew")
+            row=28, column=0, padx=18, pady=(12, 6), sticky="ew")
 
         self.boton_guardar = ctk.CTkButton(
-            panel,
-            text="INICIAR\nPRUEBA",
-            height=80,
-            font=("Arial", 30, "bold"),
+            panel_derecho,
+            text="INICIAR PRUEBA",
+            height=72,
+            font=("Arial", 26, "bold"),
             fg_color="#8A6D1D",
             hover_color="#6C5515",
             command=self.guardar_resultado,
         )
-        self.boton_guardar.grid(row=18, column=0, padx=18, pady=6, sticky="ew")
+        self.boton_guardar.grid(
+            row=2, column=0, padx=16, pady=(6, 12), sticky="ew")
 
         self.actualizar_estado_modo_admin()
 
@@ -917,6 +962,9 @@ class CamaraVision:
             self.boton_todos_masters,
             self.slider_similitud,
             self.slider_sensibilidad,
+            self.slider_area_minima,
+            self.slider_area_maxima,
+            self.slider_porcentaje_diferente,
             self.menu_tipo_roi,
         ):
             control.configure(state=estado)
@@ -1124,6 +1172,15 @@ class CamaraVision:
         self.menu_tipo_roi.set(roi.get("tipo", "INSPECCION"))
         self.slider_similitud.set(roi["similitud_minima"])
         self.slider_sensibilidad.set(roi["sensibilidad"])
+        self.slider_area_minima.set(roi["area_minima"])
+        self.slider_area_maxima.set(roi["area_defecto_maxima"])
+        self.slider_porcentaje_diferente.set(
+            roi["porcentaje_diferente_maximo"])
+        self.label_area_minima.configure(text=f'{int(roi["area_minima"])} px²')
+        self.label_area_maxima.configure(
+            text=f'{roi["area_defecto_maxima"]:.0f} px²')
+        self.label_porcentaje_diferente.configure(
+            text=f'{roi["porcentaje_diferente_maximo"]:.3f} %')
         self.label_similitud_config.configure(
             text=f'{roi["similitud_minima"]:.1f} %')
         self.label_sensibilidad.configure(text=f'{int(roi["sensibilidad"])} %')
@@ -1162,6 +1219,32 @@ class CamaraVision:
         roi = self.rois[self.roi_seleccionado]
         roi["sensibilidad"] = int(round(float(valor)))
         self.label_sensibilidad.configure(text=f'{roi["sensibilidad"]} %')
+        self.guardar_configuracion()
+
+    def cambiar_area_minima_roi(self, valor):
+        if not self.modo_admin:
+            return
+        roi = self.rois[self.roi_seleccionado]
+        roi["area_minima"] = max(1, int(round(float(valor))))
+        self.label_area_minima.configure(text=f'{roi["area_minima"]} px²')
+        self.guardar_configuracion()
+
+    def cambiar_area_maxima_roi(self, valor):
+        if not self.modo_admin:
+            return
+        roi = self.rois[self.roi_seleccionado]
+        roi["area_defecto_maxima"] = max(1.0, float(valor))
+        self.label_area_maxima.configure(
+            text=f'{roi["area_defecto_maxima"]:.0f} px²')
+        self.guardar_configuracion()
+
+    def cambiar_porcentaje_diferente_roi(self, valor):
+        if not self.modo_admin:
+            return
+        roi = self.rois[self.roi_seleccionado]
+        roi["porcentaje_diferente_maximo"] = max(0.01, float(valor))
+        self.label_porcentaje_diferente.configure(
+            text=f'{roi["porcentaje_diferente_maximo"]:.3f} %')
         self.guardar_configuracion()
 
     def activar_configuracion_roi(self):
@@ -1352,7 +1435,7 @@ class CamaraVision:
     @staticmethod
     def preparar_imagen(imagen):
         gris = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
-        return cv2.GaussianBlur(gris, (9, 9), 0)
+        return cv2.GaussianBlur(gris, (3, 3), 0)
 
     @staticmethod
     def calcular_umbral_diferencia(sensibilidad):
@@ -1371,7 +1454,8 @@ class CamaraVision:
             return None
         try:
             gris = cv2.cvtColor(imagen_roi, cv2.COLOR_BGR2GRAY)
-            resultados = zxingcpp.read_barcodes(gris)
+            resultados = zxingcpp.read_barcodes(
+                gris)
             for resultado in resultados:
                 if resultado.format == zxingcpp.BarcodeFormat.DataMatrix:
                     return resultado.text.strip()
@@ -1409,8 +1493,10 @@ class CamaraVision:
             cv2.THRESH_BINARY,
         )
 
+        # Un cierre ligero une píxeles cercanos sin eliminar primero defectos pequeños.
+        # Se elimina MORPH_OPEN porque podía borrar diferencias reales detectadas
+        # con sensibilidades altas.
         kernel = np.ones((3, 3), np.uint8)
-        mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN, kernel)
         mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, kernel)
 
         contornos, _ = cv2.findContours(
@@ -1439,11 +1525,16 @@ class CamaraVision:
         area_roi = max(1, master.shape[0] * master.shape[1])
         porcentaje_diferente = (area_total_diferente / area_roi) * 100
 
-        aprobado = (
-            porcentaje_similitud >= roi_config["similitud_minima"]
-            and area_defecto_mayor < roi_config["area_defecto_maxima"]
-            and porcentaje_diferente < roi_config["porcentaje_diferente_maximo"]
-        )
+        criterios_fail = []
+        if porcentaje_similitud < roi_config["similitud_minima"]:
+            criterios_fail.append("similitud")
+        if area_defecto_mayor >= roi_config["area_defecto_maxima"]:
+            criterios_fail.append("área máxima")
+        if porcentaje_diferente >= roi_config["porcentaje_diferente_maximo"]:
+            criterios_fail.append("% diferente")
+
+        aprobado = not criterios_fail
+        motivo = "OK" if aprobado else ", ".join(criterios_fail)
 
         return {
             "aprobado": aprobado,
@@ -1451,6 +1542,8 @@ class CamaraVision:
             "diferencia": porcentaje_diferente,
             "defectos": cantidad_defectos,
             "area_defecto_mayor": area_defecto_mayor,
+            "umbral_diferencia": umbral_diferencia,
+            "motivo": motivo,
             "imagen_resultado": imagen_resultado,
         }
 
@@ -1500,6 +1593,9 @@ class CamaraVision:
                     roi["similitud"] = resultado["similitud"]
                     roi["diferencia"] = resultado["diferencia"]
                     roi["defectos"] = resultado["defectos"]
+                    roi["area_defecto_mayor"] = resultado["area_defecto_mayor"]
+                    roi["umbral_diferencia"] = resultado["umbral_diferencia"]
+                    roi["motivo"] = resultado["motivo"]
                     resultados_validos.append(aprobado)
                     color = (0, 255, 0) if aprobado else (0, 0, 255)
 
@@ -1610,12 +1706,16 @@ class CamaraVision:
             if roi.get("tipo") == "DATAMATRIX":
                 codigo = roi.get("codigo", "")
                 texto = f'ROI {indice}: {roi["resultado"]} | DM: {codigo}' if codigo else f'ROI {indice}: {roi["resultado"]} | DM: NO LEÍDO'
-            elif roi["similitud"] is None or not self.comparacion_activa:
+            elif roi["similitud"] is None:
                 texto = f'ROI {indice}: {roi["resultado"]}'
             else:
+                area_mayor = roi.get("area_defecto_mayor", 0.0)
+                umbral = roi.get("umbral_diferencia", "-")
+                motivo = roi.get("motivo", "OK")
                 texto = (
-                    f'ROI {indice}: {roi["resultado"]} | '
-                    f'{roi["similitud"]:.2f}% | D:{roi["diferencia"]:.3f}%'
+                    f'ROI {indice}: {roi["resultado"]} | S:{roi["similitud"]:.2f}% | '
+                    f'D:{roi["diferencia"]:.3f}% | A:{area_mayor:.0f}px² | '
+                    f'U:{umbral} | {motivo}'
                 )
 
             if roi["resultado"] == "PASS":

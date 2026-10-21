@@ -90,6 +90,9 @@ class CamaraVision:
         self.roi_arrastrando = False
         self.punto_inicio_roi = None
         self.roi_temporal = None
+        # Estado de calibración de pads para SOLDER_BRIDGE
+        self.calibrando_pads = False
+        self.pads_temporales = []
 
         # Conversión de coordenadas de pantalla a imagen de cámara.
         self.escala_video = 1.0
@@ -582,10 +585,14 @@ class CamaraVision:
         self.area_pcb = None
         if config.has_section("ALINEACION"):
             try:
-                self.area_pcb = tuple(config.getint("ALINEACION", k) for k in ("x1", "y1", "x2", "y2"))
-                self.max_desplazamiento = config.getfloat("ALINEACION", "max_desplazamiento", fallback=15.0)
-                self.max_rotacion = config.getfloat("ALINEACION", "max_rotacion", fallback=3.0)
-                self.min_confianza_alineacion = config.getfloat("ALINEACION", "min_confianza", fallback=0.80)
+                self.area_pcb = tuple(config.getint("ALINEACION", k)
+                                      for k in ("x1", "y1", "x2", "y2"))
+                self.max_desplazamiento = config.getfloat(
+                    "ALINEACION", "max_desplazamiento", fallback=15.0)
+                self.max_rotacion = config.getfloat(
+                    "ALINEACION", "max_rotacion", fallback=3.0)
+                self.min_confianza_alineacion = config.getfloat(
+                    "ALINEACION", "min_confianza", fallback=0.80)
             except (ValueError, configparser.Error):
                 self.area_pcb = None
 
@@ -603,7 +610,8 @@ class CamaraVision:
                     roi["tipo"] = "INSPECCION"
                 pads_texto = config.get(seccion, "pads", fallback="")
                 try:
-                    pads = [tuple(map(int, par.split(","))) for par in pads_texto.split(";") if par]
+                    pads = [tuple(map(int, par.split(",")))
+                            for par in pads_texto.split(";") if par]
                     roi["pads"] = pads if len(pads) == 4 else []
                 except ValueError:
                     roi["pads"] = []
@@ -794,19 +802,24 @@ class CamaraVision:
         self.label_alineacion = ctk.CTkLabel(
             panel, text="SIN REFERENCIA PCB", text_color="#F5C84B",
             font=("Arial", 11, "bold"), wraplength=285)
-        self.label_alineacion.grid(row=29, column=0, padx=18, pady=5, sticky="ew")
+        self.label_alineacion.grid(
+            row=29, column=0, padx=18, pady=5, sticky="ew")
         self.boton_area_pcb = ctk.CTkButton(
             panel, text="CONFIGURAR ÁREA PCB", command=self.configurar_area_pcb)
-        self.boton_area_pcb.grid(row=30, column=0, padx=18, pady=5, sticky="ew")
+        self.boton_area_pcb.grid(
+            row=30, column=0, padx=18, pady=5, sticky="ew")
         self.boton_referencia_pcb = ctk.CTkButton(
             panel, text="CAPTURAR REFERENCIA PCB", command=self.capturar_referencia_pcb)
-        self.boton_referencia_pcb.grid(row=31, column=0, padx=18, pady=5, sticky="ew")
-        self.label_masters = ctk.CTkLabel(panel, text="Masters ROI: 0/5", text_color="#AEB4D0")
+        self.boton_referencia_pcb.grid(
+            row=31, column=0, padx=18, pady=5, sticky="ew")
+        self.label_masters = ctk.CTkLabel(
+            panel, text="Masters ROI: 0/5", text_color="#AEB4D0")
         self.label_masters.grid(row=32, column=0, padx=18, pady=5, sticky="ew")
         self.boton_borrar_masters = ctk.CTkButton(
             panel, text="REINICIAR MASTERS DEL ROI", fg_color="#7A3535",
             command=self.reiniciar_masters_roi)
-        self.boton_borrar_masters.grid(row=33, column=0, padx=18, pady=5, sticky="ew")
+        self.boton_borrar_masters.grid(
+            row=33, column=0, padx=18, pady=5, sticky="ew")
 
         self.boton_admin = ctk.CTkButton(
             panel,
@@ -960,7 +973,8 @@ class CamaraVision:
             panel, text="CALIBRAR 4 PADS (SOLDER BRIDGE)", height=42,
             fg_color="#6B557A", command=self.activar_calibracion_pads,
         )
-        self.boton_calibrar_pads.grid(row=29, column=0, padx=18, pady=(6, 12), sticky="ew")
+        self.boton_calibrar_pads.grid(
+            row=29, column=0, padx=18, pady=(6, 12), sticky="ew")
 
         self.boton_guardar = ctk.CTkButton(
             panel_derecho,
@@ -1178,7 +1192,8 @@ class CamaraVision:
 
     def cargar_referencia_pcb(self):
         ruta = self.ruta_referencia_pcb()
-        self.referencia_pcb = cv2.imread(ruta) if os.path.isfile(ruta) else None
+        self.referencia_pcb = cv2.imread(
+            ruta) if os.path.isfile(ruta) else None
         self.alineacion_info = "REFERENCIA LISTA" if self.referencia_pcb is not None else "SIN REFERENCIA PCB"
         if hasattr(self, "label_alineacion"):
             self.label_alineacion.configure(text=self.alineacion_info)
@@ -1192,7 +1207,8 @@ class CamaraVision:
                 if imagen is not None:
                     imagenes.append(imagen)
             # Compatibilidad con la versión anterior, sin eliminar su master.
-            ruta_legacy = os.path.join(self.carpeta_master, f"roi_{indice + 1}.jpg")
+            ruta_legacy = os.path.join(
+                self.carpeta_master, f"roi_{indice + 1}.jpg")
             if not imagenes and os.path.isfile(ruta_legacy):
                 imagen = cv2.imread(ruta_legacy)
                 if imagen is not None:
@@ -1248,17 +1264,20 @@ class CamaraVision:
 
     def capturar_referencia_pcb(self):
         if not self.modo_admin or self.frame_actual is None or self.area_pcb is None:
-            messagebox.showwarning("Referencia PCB", "Activa administrador y define primero el área PCB.")
+            messagebox.showwarning(
+                "Referencia PCB", "Activa administrador y define primero el área PCB.")
             return
         if not messagebox.askyesno("Referencia PCB", "¿Guardar la PCB buena actual como referencia de alineación?\nEsto invalidará la calibración anterior."):
             return
         if not cv2.imwrite(self.ruta_referencia_pcb(), self.frame_actual):
-            messagebox.showerror("Error", "No se pudo guardar la referencia PCB")
+            messagebox.showerror(
+                "Error", "No se pudo guardar la referencia PCB")
             return
         self.referencia_pcb = self.frame_actual.copy()
         self.alineacion_info = "REFERENCIA PCB GUARDADA"
         self.label_alineacion.configure(text=self.alineacion_info)
-        self.label_resultado_general.configure(text="REFERENCIA PCB GUARDADA", fg_color="#315A77")
+        self.label_resultado_general.configure(
+            text="REFERENCIA PCB GUARDADA", fg_color="#315A77")
 
     def configurar_area_pcb(self):
         if not self.modo_admin:
@@ -1266,7 +1285,8 @@ class CamaraVision:
         self.configurando_roi = False
         self.configurando_area_pcb = True
         self.roi_arrastrando = False
-        self.label_resultado_general.configure(text="DIBUJA ÁREA PCB", fg_color="#A66A00")
+        self.label_resultado_general.configure(
+            text="DIBUJA ÁREA PCB", fg_color="#A66A00")
 
     def iniciar_camara(self):
         """Abre la cámara usando el backend adecuado para Windows o Linux/Ubuntu."""
@@ -1336,7 +1356,8 @@ class CamaraVision:
             text=f'{roi["similitud_minima"]:.1f} %')
         self.label_sensibilidad.configure(text=f'{int(roi["sensibilidad"])} %')
         if hasattr(self, "label_masters"):
-            self.label_masters.configure(text=f'Masters ROI: {len(roi.get("masters", []))}/{self.max_masters}')
+            self.label_masters.configure(
+                text=f'Masters ROI: {len(roi.get("masters", []))}/{self.max_masters}')
         self.label_coordenadas.configure(
             text=(
                 f'X1: {roi["x1"]}  Y1: {roi["y1"]}  '
@@ -1445,14 +1466,16 @@ class CamaraVision:
             return
         roi = self.rois[self.roi_seleccionado]
         if roi.get("tipo") != "SOLDER_BRIDGE":
-            messagebox.showwarning("Tipo de ROI", "Selecciona primero SOLDER_BRIDGE.")
+            messagebox.showwarning(
+                "Tipo de ROI", "Selecciona primero SOLDER_BRIDGE.")
             return
         self.comparacion_activa = False
         self.mostrando_fotografia = False
         self.configurando_roi = False
         self.calibrando_pads = True
         self.pads_temporales = []
-        self.label_resultado_general.configure(text="SELECCIONA PAD 1 DE 4", fg_color="#6B557A")
+        self.label_resultado_general.configure(
+            text="SELECCIONA PAD 1 DE 4", fg_color="#6B557A")
 
     def seleccionar_pad_mouse(self, evento):
         if not self.calibrando_pads:
@@ -1463,19 +1486,22 @@ class CamaraVision:
         roi = self.rois[self.roi_seleccionado]
         x, y = punto
         if not (roi["x1"] <= x < roi["x2"] and roi["y1"] <= y < roi["y2"]):
-            self.label_resultado_general.configure(text="PAD FUERA DEL ROI", fg_color="#B3261E")
+            self.label_resultado_general.configure(
+                text="PAD FUERA DEL ROI", fg_color="#B3261E")
             return True
         local = (x-roi["x1"], y-roi["y1"])
-        if any(np.hypot(x-px, y-py) < 5 for px, py in [(a+roi["x1"],b+roi["y1"]) for a,b in self.pads_temporales]):
+        if any(np.hypot(x-px, y-py) < 5 for px, py in [(a+roi["x1"], b+roi["y1"]) for a, b in self.pads_temporales]):
             return True
         self.pads_temporales.append(local)
         if len(self.pads_temporales) == 4:
             roi["pads"] = list(self.pads_temporales)
             self.guardar_configuracion()
             self.calibrando_pads = False
-            self.label_resultado_general.configure(text="4 PADS CALIBRADOS", fg_color="#218C4A")
+            self.label_resultado_general.configure(
+                text="4 PADS CALIBRADOS", fg_color="#218C4A")
         else:
-            self.label_resultado_general.configure(text=f"SELECCIONA PAD {len(self.pads_temporales)+1} DE 4", fg_color="#6B557A")
+            self.label_resultado_general.configure(
+                text=f"SELECCIONA PAD {len(self.pads_temporales)+1} DE 4", fg_color="#6B557A")
         return True
 
     def iniciar_dibujo_roi(self, evento):
@@ -1541,8 +1567,10 @@ class CamaraVision:
             if os.path.isfile(ruta_ref):
                 os.remove(ruta_ref)
             self.guardar_configuracion()
-            self.label_alineacion.configure(text="ÁREA LISTA: CAPTURA REFERENCIA PCB")
-            self.label_resultado_general.configure(text="ÁREA PCB GUARDADA", fg_color="#315A77")
+            self.label_alineacion.configure(
+                text="ÁREA LISTA: CAPTURA REFERENCIA PCB")
+            self.label_resultado_general.configure(
+                text="ÁREA PCB GUARDADA", fg_color="#315A77")
             return
         roi = self.rois[self.roi_seleccionado]
         roi.update({"x1": x1, "y1": y1, "x2": x2, "y2": y2})
@@ -1556,7 +1584,8 @@ class CamaraVision:
             ruta = self.ruta_master_roi(self.roi_seleccionado, numero)
             if os.path.isfile(ruta):
                 os.remove(ruta)
-        ruta_legacy = os.path.join(self.carpeta_master, f"roi_{self.roi_seleccionado + 1}.jpg")
+        ruta_legacy = os.path.join(
+            self.carpeta_master, f"roi_{self.roi_seleccionado + 1}.jpg")
         if os.path.isfile(ruta_legacy):
             os.remove(ruta_legacy)
 
@@ -1603,7 +1632,8 @@ class CamaraVision:
             ruta = self.ruta_master_roi(indice, numero)
             if os.path.isfile(ruta):
                 os.remove(ruta)
-        ruta_legacy = os.path.join(self.carpeta_master, f"roi_{indice + 1}.jpg")
+        ruta_legacy = os.path.join(
+            self.carpeta_master, f"roi_{indice + 1}.jpg")
         if os.path.isfile(ruta_legacy):
             os.remove(ruta_legacy)
         roi = self.rois[indice]
@@ -1619,11 +1649,13 @@ class CamaraVision:
             return
         roi = self.rois[self.roi_seleccionado]
         if roi.get("tipo") in ("DATAMATRIX", "SOLDER_BRIDGE"):
-            self.label_resultado_general.configure(text="ESTE TIPO DE ROI NO REQUIERE MASTER", fg_color="#315A77")
+            self.label_resultado_general.configure(
+                text="ESTE TIPO DE ROI NO REQUIERE MASTER", fg_color="#315A77")
             return
         alineado, motivo = self.obtener_frame_alineado(self.frame_actual)
         if alineado is None:
-            self.label_resultado_general.configure(text="ERROR ALINEACIÓN", fg_color="#B3261E")
+            self.label_resultado_general.configure(
+                text="ERROR ALINEACIÓN", fg_color="#B3261E")
             self.label_alineacion.configure(text=motivo)
             return
         imagen_roi = self.obtener_roi(alineado, roi)
@@ -1631,15 +1663,18 @@ class CamaraVision:
             return
         numero = len(roi.get("masters", [])) + 1
         if numero > self.max_masters:
-            messagebox.showinfo("Masters completos", "Ya existen 5 masters. Para reemplazarlos, elimina los masters del ROI desde la carpeta masters y reinicia el programa.")
+            messagebox.showinfo(
+                "Masters completos", "Ya existen 5 masters. Para reemplazarlos, elimina los masters del ROI desde la carpeta masters y reinicia el programa.")
             return
         if not cv2.imwrite(self.ruta_master_roi(self.roi_seleccionado, numero), imagen_roi):
-            self.label_resultado_general.configure(text="ERROR AL GUARDAR", fg_color="#B3261E")
+            self.label_resultado_general.configure(
+                text="ERROR AL GUARDAR", fg_color="#B3261E")
             return
         roi.setdefault("masters", []).append(imagen_roi.copy())
         roi["master"] = roi["masters"][0]
         roi["resultado"] = "LISTO"
-        self.label_resultado_general.configure(text=f"MASTER {numero}/5 GUARDADO", fg_color="#315A77")
+        self.label_resultado_general.configure(
+            text=f"MASTER {numero}/5 GUARDADO", fg_color="#315A77")
         self.label_alineacion.configure(text=motivo)
         self.actualizar_controles_roi()
         self.actualizar_etiquetas_resultados()
@@ -1650,7 +1685,8 @@ class CamaraVision:
         alineado, motivo = self.obtener_frame_alineado(self.frame_actual)
         if alineado is None:
             self.label_alineacion.configure(text=motivo)
-            self.label_resultado_general.configure(text="ERROR ALINEACIÓN", fg_color="#B3261E")
+            self.label_resultado_general.configure(
+                text="ERROR ALINEACIÓN", fg_color="#B3261E")
             return
         guardados = 0
         for indice, roi in enumerate(self.rois):
@@ -1663,7 +1699,8 @@ class CamaraVision:
                 roi["master"] = roi["masters"][0]
                 roi["resultado"] = "LISTO"
                 guardados += 1
-        self.label_resultado_general.configure(text=f"{guardados} MASTERS GUARDADOS", fg_color="#315A77")
+        self.label_resultado_general.configure(
+            text=f"{guardados} MASTERS GUARDADOS", fg_color="#315A77")
         self.actualizar_controles_roi()
         self.actualizar_etiquetas_resultados()
 
@@ -1709,7 +1746,7 @@ class CamaraVision:
         if len(puntos) != 4 or imagen is None or imagen.size == 0:
             return {"estado": "ERROR", "motivo": "CALIBRAR 4 PADS", "imagen_resultado": imagen}
         alto, ancho = imagen.shape[:2]
-        if any(not (3 <= x < ancho-3 and 3 <= y < alto-3) for x,y in puntos):
+        if any(not (3 <= x < ancho-3 and 3 <= y < alto-3) for x, y in puntos):
             return {"estado": "ERROR", "motivo": "PADS FUERA DE IMAGEN", "imagen_resultado": imagen}
         hsv = cv2.cvtColor(imagen, cv2.COLOR_BGR2HSV)
         # Soldadura: reflectancia alta y saturación baja; excluir máscara verde.
@@ -1718,13 +1755,16 @@ class CamaraVision:
         val_min = int(np.clip(145 - (sensibilidad-50)*0.4, 110, 175))
         mascara = cv2.inRange(hsv, (0, 0, val_min), (179, sat_max, 255))
         # Evitar unir pads artificialmente mediante dilatación/cierre morfológico.
-        cantidad, etiquetas, stats, _ = cv2.connectedComponentsWithStats(mascara, 8)
+        cantidad, etiquetas, stats, _ = cv2.connectedComponentsWithStats(
+            mascara, 8)
         ids = []
-        for x,y in puntos:
-            x,y = int(x), int(y)
+        for x, y in puntos:
+            x, y = int(x), int(y)
             # Permitir un error de clic de 3 px, sin conectar regiones separadas.
-            region = etiquetas[max(0,y-3):min(alto,y+4), max(0,x-3):min(ancho,x+4)]
-            valores, frecuencias = np.unique(region[region > 0], return_counts=True)
+            region = etiquetas[max(0, y-3):min(alto, y+4),
+                               max(0, x-3):min(ancho, x+4)]
+            valores, frecuencias = np.unique(
+                region[region > 0], return_counts=True)
             if len(valores) == 0:
                 return {"estado": "ERROR", "motivo": "PAD NO DETECTADO: AJUSTAR LUZ/UMBRAL", "imagen_resultado": imagen}
             elegido = int(valores[np.argmax(frecuencias)])
@@ -1732,17 +1772,19 @@ class CamaraVision:
                 return {"estado": "ERROR", "motivo": "PAD CON SEGMENTACIÓN DÉBIL", "imagen_resultado": imagen}
             ids.append(elegido)
         resultado = imagen.copy()
-        for n,(x,y) in enumerate(puntos,1):
-            cv2.circle(resultado, (int(x),int(y)), 5, (255,0,255), 1)
-            cv2.putText(resultado,str(n),(int(x)+5,int(y)-4),cv2.FONT_HERSHEY_SIMPLEX,.4,(255,0,255),1)
+        for n, (x, y) in enumerate(puntos, 1):
+            cv2.circle(resultado, (int(x), int(y)), 5, (255, 0, 255), 1)
+            cv2.putText(resultado, str(n), (int(x)+5, int(y)-4),
+                        cv2.FONT_HERSHEY_SIMPLEX, .4, (255, 0, 255), 1)
         conexiones = []
         for a in range(4):
-            for b in range(a+1,4):
+            for b in range(a+1, 4):
                 if ids[a] == ids[b]:
-                    conexiones.append((a,b))
-                    cv2.line(resultado, tuple(puntos[a]), tuple(puntos[b]), (0,0,255), 3)
+                    conexiones.append((a, b))
+                    cv2.line(resultado, tuple(puntos[a]), tuple(
+                        puntos[b]), (0, 0, 255), 3)
         if conexiones:
-            return {"estado": "FAIL", "motivo": "PUENTE VISIBLE: " + ", ".join(f"{a+1}-{b+1}" for a,b in conexiones),
+            return {"estado": "FAIL", "motivo": "PUENTE VISIBLE: " + ", ".join(f"{a+1}-{b+1}" for a, b in conexiones),
                     "imagen_resultado": resultado, "defectos": len(conexiones)}
         return {"estado": "PASS", "motivo": "4 PADS VISUALMENTE SEPARADOS",
                 "imagen_resultado": resultado, "defectos": 0}
@@ -1753,7 +1795,8 @@ class CamaraVision:
             return None
         candidatos = []
         for numero, master in enumerate(masters, 1):
-            resultado = self._comparar_un_master(imagen_actual, roi_config, master)
+            resultado = self._comparar_un_master(
+                imagen_actual, roi_config, master)
             if resultado is not None:
                 resultado["master_utilizado"] = numero
                 candidatos.append(resultado)
@@ -1868,10 +1911,12 @@ class CamaraVision:
                 roi["diferencia"] = 0.0
                 roi["defectos"] = deteccion.get("defectos", 0)
                 resultados_validos.append(roi["resultado"] == "PASS")
-                color = (0,255,0) if roi["resultado"] == "PASS" else (0,0,255)
+                color = (0, 255, 0) if roi["resultado"] == "PASS" else (
+                    0, 0, 255)
                 anotada = deteccion.get("imagen_resultado")
                 if anotada is not None and anotada.size:
-                    frame_resultado[y1:y2, x1:x2] = cv2.resize(anotada, (x2-x1,y2-y1))
+                    frame_resultado[y1:y2, x1:x2] = cv2.resize(
+                        anotada, (x2-x1, y2-y1))
             elif roi.get("tipo", "INSPECCION") == "DATAMATRIX":
                 imagen_roi = self.obtener_roi(frame, roi)
                 codigo = self.leer_data_matrix(imagen_roi)
@@ -1976,7 +2021,8 @@ class CamaraVision:
             self.label_alineacion.configure(text=motivo)
             if alineado is None:
                 frame_mostrar = frame.copy()
-                self.label_resultado_general.configure(text="ERROR POSICIONAMIENTO", fg_color="#B3261E")
+                self.label_resultado_general.configure(
+                    text="ERROR POSICIONAMIENTO", fg_color="#B3261E")
             else:
                 frame_mostrar, _ = self.procesar_frame_inspeccion(alineado)
         else:
@@ -2005,7 +2051,8 @@ class CamaraVision:
                 )
 
         if self.area_pcb is not None and not self.mostrando_fotografia:
-            cv2.rectangle(frame_mostrar, self.area_pcb[:2], self.area_pcb[2:], (255, 200, 0), 2)
+            cv2.rectangle(
+                frame_mostrar, self.area_pcb[:2], self.area_pcb[2:], (255, 200, 0), 2)
         if self.roi_temporal is not None and not self.mostrando_fotografia:
             tx1, ty1, tx2, ty2 = self.roi_temporal
             cv2.rectangle(
@@ -2018,11 +2065,13 @@ class CamaraVision:
 
         if not self.mostrando_fotografia:
             for i, roi in enumerate(self.rois):
-                puntos = self.pads_temporales if self.calibrando_pads and i == self.roi_seleccionado else roi.get("pads", [])
+                puntos = self.pads_temporales if self.calibrando_pads and i == self.roi_seleccionado else roi.get(
+                    "pads", [])
                 for n, (px, py) in enumerate(puntos, 1):
                     cx, cy = roi["x1"]+px, roi["y1"]+py
-                    cv2.circle(frame_mostrar, (cx,cy), 5, (255, 0, 255), 2)
-                    cv2.putText(frame_mostrar, str(n), (cx+5, cy-5), cv2.FONT_HERSHEY_SIMPLEX, .4, (255,0,255), 1)
+                    cv2.circle(frame_mostrar, (cx, cy), 5, (255, 0, 255), 2)
+                    cv2.putText(frame_mostrar, str(n), (cx+5, cy-5),
+                                cv2.FONT_HERSHEY_SIMPLEX, .4, (255, 0, 255), 1)
         self.mostrar_frame(frame_mostrar)
         self.actualizacion_programada = self.ventana.after(
             30, self.actualizar_video
@@ -2146,7 +2195,7 @@ class CamaraVision:
                 roi["resultado"] = (
                     "LISTO DATAMATRIX" if roi.get("tipo") == "DATAMATRIX" else
                     ("LISTO SOLDER BRIDGE" if roi.get("tipo") == "SOLDER_BRIDGE" else
-                    ("LISTO" if roi["master"] is not None else "SIN MASTER"))
+                     ("LISTO" if roi["master"] is not None else "SIN MASTER"))
                 )
                 roi["similitud"] = None
                 roi["diferencia"] = 0.0
@@ -2202,9 +2251,11 @@ class CamaraVision:
         alineado, motivo = self.obtener_frame_alineado(frame_capturado)
         self.label_alineacion.configure(text=motivo)
         if alineado is None:
-            self.label_resultado_general.configure(text="ERROR POSICIONAMIENTO", fg_color="#B3261E")
+            self.label_resultado_general.configure(
+                text="ERROR POSICIONAMIENTO", fg_color="#B3261E")
             return
-        frame_comparado, resultado_general = self.procesar_frame_inspeccion(alineado)
+        frame_comparado, resultado_general = self.procesar_frame_inspeccion(
+            alineado)
 
         fecha = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         nombre_resultado = resultado_general.replace(" ", "_")
