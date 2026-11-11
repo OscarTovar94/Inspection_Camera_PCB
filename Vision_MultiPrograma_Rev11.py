@@ -7,6 +7,8 @@ Requiere Python 3.8 o superior y las siguientes librerías:
 """
 import configparser
 import os
+import sys
+import tempfile
 import shutil
 import re
 import platform
@@ -23,6 +25,53 @@ try:
     import zxingcpp  # pylint: disable=no-name-in-module
 except ImportError:
     zxingcpp = None
+
+# Mantener las referencias durante toda la ejecución.
+mutex = None
+archivo_bloqueo = None
+
+
+def verificar_instancia_unica():
+    global mutex, archivo_bloqueo
+
+    sistema = platform.system()
+
+    if sistema == "Windows":
+        import win32event
+        import win32api
+        import winerror
+
+        mutex = win32event.CreateMutex(
+            None,
+            False,
+            "Local\\VisionPCB_UnicaInstancia"
+        )
+
+        if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+            sys.exit(0)
+
+    elif sistema == "Linux":
+        import fcntl
+
+        ruta_bloqueo = os.path.join(
+            tempfile.gettempdir(),
+            f"vision_pcb_{os.getuid()}.lock"
+        )
+
+        archivo_bloqueo = open(ruta_bloqueo, "a+")
+
+        try:
+            fcntl.flock(
+                archivo_bloqueo.fileno(),
+                fcntl.LOCK_EX | fcntl.LOCK_NB
+            )
+        except BlockingIOError:
+            archivo_bloqueo.close()
+            sys.exit(0)
+
+
+# Ejecutar antes de crear la interfaz gráfica.
+verificar_instancia_unica()
 
 
 class CamaraVision:
@@ -471,7 +520,7 @@ class CamaraVision:
 
         tk.Label(
             frame_nuevo,
-            text="Crear nuevo programa",
+            text="Crear nuevo programa:",
             font=("Arial", 12, "bold"),
             fg="white",
             bg=self.color_panel,
@@ -637,8 +686,10 @@ class CamaraVision:
                     seccion, "dm_longitud", fallback=16)
                 roi["dm_numero_parte"] = config.get(
                     seccion, "dm_numero_parte", fallback="").strip()
-                modo = config.get(seccion, "dm_modo", fallback="AUTOMATICO").strip().upper()
-                roi["dm_modo"] = modo if modo in ("AUTOMATICO", "MANUAL") else "AUTOMATICO"
+                modo = config.get(seccion, "dm_modo",
+                                  fallback="AUTOMATICO").strip().upper()
+                roi["dm_modo"] = modo if modo in (
+                    "AUTOMATICO", "MANUAL") else "AUTOMATICO"
                 roi["x1"] = config.getint(seccion, "x1", fallback=roi["x1"])
                 roi["y1"] = config.getint(seccion, "y1", fallback=roi["y1"])
                 roi["x2"] = config.getint(seccion, "x2", fallback=roi["x2"])
@@ -705,7 +756,7 @@ class CamaraVision:
 
         ctk.CTkLabel(
             encabezado,
-            text="Rev10 (By:Oscar Tovar)",
+            text="Rev11 (By:Oscar Tovar)",
             font=("Arial", 12),
             text_color="#AEB4D0",
         ).grid(row=1, column=1, padx=25, pady=(0, 5), sticky="e")
@@ -822,7 +873,7 @@ class CamaraVision:
         self.menu_tipo_roi.grid(row=6, column=0, padx=18,
                                 pady=(0, 8), sticky="ew")
         self.boton_configurar_dm = ctk.CTkButton(
-            panel, text="CONFIGURAR DATAMATRIX (ID / NÚMERO DE PARTE)",
+            panel, text="CONFIGURAR DATAMATRIX",
             command=self.configurar_datamatrix)
         self.boton_configurar_dm.grid(
             row=35, column=0, padx=18, pady=(6, 8), sticky="ew")
@@ -1024,19 +1075,24 @@ class CamaraVision:
         # Campo de operación: solo aparece si el programa contiene un ROI
         # Data Matrix configurado para escáner manual.
         self.frame_escaneo = ctk.CTkFrame(panel_derecho, fg_color="#252842")
-        self.frame_escaneo.grid(row=2, column=0, padx=16, pady=(5, 4), sticky="ew")
+        self.frame_escaneo.grid(row=2, column=0, padx=16,
+                                pady=(5, 4), sticky="ew")
         self.frame_escaneo.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(self.frame_escaneo, text="ESCANEAR ID DE PCB",
                      font=("Arial", 14, "bold")).grid(row=0, column=0, padx=10, pady=(9, 2), sticky="w")
         self.entrada_dm_manual = ctk.CTkEntry(
             self.frame_escaneo, height=40, placeholder_text="Escanee el Data Matrix aquí")
-        self.entrada_dm_manual.grid(row=1, column=0, padx=10, pady=4, sticky="ew")
+        self.entrada_dm_manual.grid(
+            row=1, column=0, padx=10, pady=4, sticky="ew")
         self.entrada_dm_manual.bind("<Return>", self.confirmar_escaneo_manual)
-        self.entrada_dm_manual.bind("<KP_Enter>", self.confirmar_escaneo_manual)
-        self.entrada_dm_manual.bind("<KeyRelease>", self.al_modificar_escaneo_manual)
+        self.entrada_dm_manual.bind(
+            "<KP_Enter>", self.confirmar_escaneo_manual)
+        self.entrada_dm_manual.bind(
+            "<KeyRelease>", self.al_modificar_escaneo_manual)
         self.label_dm_manual = ctk.CTkLabel(self.frame_escaneo, text="ESPERANDO ESCANEO",
-                                             font=("Arial", 11, "bold"), text_color="#F5C84B")
-        self.label_dm_manual.grid(row=2, column=0, padx=10, pady=(1, 9), sticky="w")
+                                            font=("Arial", 11, "bold"), text_color="#F5C84B")
+        self.label_dm_manual.grid(
+            row=2, column=0, padx=10, pady=(1, 9), sticky="w")
 
         self.boton_guardar = ctk.CTkButton(
             panel_derecho,
@@ -1559,7 +1615,8 @@ class CamaraVision:
         self.boton_guardar.configure(
             state="normal" if self.dm_id_confirmado else "disabled")
         if not self.dm_id_confirmado:
-            self.label_dm_manual.configure(text="ESPERANDO ESCANEO", text_color="#F5C84B")
+            self.label_dm_manual.configure(
+                text="ESPERANDO ESCANEO", text_color="#F5C84B")
             self.ventana.after_idle(self.enfocar_entrada_escaneo)
 
     def enfocar_entrada_escaneo(self):
@@ -1580,7 +1637,7 @@ class CamaraVision:
         if self.rois_dm_manuales():
             self.boton_guardar.configure(state="disabled")
             self.label_dm_manual.configure(text="PRESIONE ENTER PARA VALIDAR",
-                                             text_color="#F5C84B")
+                                           text_color="#F5C84B")
 
     def confirmar_escaneo_manual(self, evento=None):
         if not self.rois_dm_manuales():
@@ -1594,18 +1651,20 @@ class CamaraVision:
             self.dm_id_confirmado = False
             self.boton_guardar.configure(state="disabled")
             self.label_dm_manual.configure(text="ID NO VÁLIDO: " + errores[0],
-                                             text_color="#FF6B6B")
-            self.label_resultado_general.configure(text="ID NO VÁLIDO", fg_color="#B3261E")
+                                           text_color="#FF6B6B")
+            self.label_resultado_general.configure(
+                text="ID NO VÁLIDO", fg_color="#B3261E")
         else:
             self.dm_id_pendiente = codigo
             self.dm_id_confirmado = True
             self.boton_guardar.configure(state="normal")
             self.label_dm_manual.configure(text="ID VÁLIDO - COLOQUE PCB Y PRESIONE INICIAR",
-                                             text_color="#6FE3A1")
+                                           text_color="#6FE3A1")
             # La foto previa permanece visible hasta recibir el nuevo ID.
             self.mostrando_fotografia = False
             self.frame_fotografia = None
-            self.label_resultado_general.configure(text="LISTO PARA INSPECCIÓN", fg_color="#315A77")
+            self.label_resultado_general.configure(
+                text="LISTO PARA INSPECCIÓN", fg_color="#315A77")
         return "break"
 
     def preparar_siguiente_escaneo(self):
@@ -1617,7 +1676,7 @@ class CamaraVision:
         self.entrada_dm_manual.delete(0, "end")
         self.boton_guardar.configure(state="disabled")
         self.label_dm_manual.configure(text="ESPERANDO SIGUIENTE ESCANEO",
-                                         text_color="#F5C84B")
+                                       text_color="#F5C84B")
         self.ventana.after_idle(self.enfocar_entrada_escaneo)
 
     def cambiar_similitud_roi(self, valor):
@@ -1835,7 +1894,7 @@ class CamaraVision:
         self.roi_temporal = None
         self.punto_inicio_roi = None
         self.boton_configurar.configure(
-            text="CONFIGURAR ÁREA CON MOUSE",
+            text="CONFIGURAR ÁREA",
             fg_color=["#3B8ED0", "#1F6AA5"],
             hover_color=["#36719F", "#144870"],
         )
@@ -1850,7 +1909,7 @@ class CamaraVision:
         self.punto_inicio_roi = None
         self.roi_temporal = None
         self.boton_configurar.configure(
-            text="CONFIGURAR ÁREA CON MOUSE",
+            text="CONFIGURAR ÁREA",
             fg_color=["#3B8ED0", "#1F6AA5"],
             hover_color=["#36719F", "#144870"],
         )
@@ -2328,9 +2387,20 @@ class CamaraVision:
                     roi["motivo"] = "NÚMERO DE PARTE INCORRECTO"
                 else:
                     roi["motivo"] = "OK"
-                roi["resultado"] = "PASS" if aprobado else "FAIL"
-                resultados_validos.append(aprobado)
-                color = (0, 255, 0) if aprobado else (0, 0, 255)
+                es_manual_pendiente = (
+                    roi.get("dm_modo", "AUTOMATICO") == "MANUAL"
+                    and not self.dm_id_confirmado
+                    and self.comparacion_activa
+                )
+                if es_manual_pendiente:
+                    roi["resultado"] = "ESPERANDO ID"
+                    roi["motivo"] = "ESCANEO MANUAL PENDIENTE"
+                    resultados_validos.append(False)
+                    color = (0, 255, 255)
+                else:
+                    roi["resultado"] = "PASS" if aprobado else "FAIL"
+                    resultados_validos.append(aprobado)
+                    color = (0, 255, 0) if aprobado else (0, 0, 255)
             elif roi["master"] is None:
                 roi["resultado"] = "SIN MASTER"
                 roi["similitud"] = None
@@ -2387,6 +2457,13 @@ class CamaraVision:
                 f"FALTAN {self.total_rois - masters_cargadas} MASTERS"
             )
             color_general = "#A66A00"
+        elif (
+            self.comparacion_activa
+            and not self.dm_id_confirmado
+            and self.rois_dm_manuales()
+        ):
+            resultado_general = "EN VIVO - ESPERANDO ID"
+            color_general = "#315A77"
         elif len(resultados_validos) == self.total_rois and all(resultados_validos):
             resultado_general = "PASS"
             color_general = "#218C4A"
@@ -2578,12 +2655,6 @@ class CamaraVision:
         self.mostrando_fotografia = False
         self.frame_fotografia = None
         self.comparacion_activa = not self.comparacion_activa
-
-        if self.comparacion_activa and self.rois_dm_manuales():
-            self.comparacion_activa = False
-            self.label_resultado_general.configure(
-                text="ESCANEE Y PRESIONE INICIAR PRUEBA", fg_color="#315A77")
-            return
 
         if self.comparacion_activa:
             self.boton_comparar.configure(
